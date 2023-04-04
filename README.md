@@ -68,7 +68,7 @@ nohup time python ./autogluon_beginner_multimodal_v2.py --png_size 1024 --train 
 ## Results
 
 ### Probabalistic F1 Scores
-| Size | Image Type | Probabilistic F1 Score |
+| Resolution | Image Type | Probabilistic F1 Score |
 |------|------------|------------------------|
 | 256  | Cropped    | **0.964**              |
 | 256  | Original   | 0.362                  |
