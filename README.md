@@ -2,7 +2,7 @@
 ## Code rules by Kaggle
 Solution attempts for RSNA Screening Mammography Breast Cancer Detection competition.  https://www.kaggle.com/competitions/rsna-breast-cancer-detection/overview.
 
-This continues to be an ongoing work and needs further testing and review before final publications as of last published date of README.md.
+This continues to be an ongoing work and needs further testing and review before final publications as of last published date of README.md. While the results and steps to reproduce the results are published, the exact methodology and models used/trained will be described soon.
 
 *As per Kaggle competition rules copied below from https://www.kaggle.com/competitions/rsna-breast-cancer-detection/rules, the discussion/code would be uploaded to kaggle website as well. Unfortunately, the code currently doesn't run on python 3.7 environment.*
 
