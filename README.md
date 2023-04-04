@@ -11,7 +11,7 @@ The code can be replicated using following commands, including, in a virtual doc
 ## Current results of score 0.964 on public data 40% higher than 0.69 published results
 The results will continue to be verified and posted on Kaggle website (current code has limitation of minimum python version of 3.8 which Kaggle does not support out of the box).
 
-![alt text](images/RSNA_Breast_Cancer_Results_040423.jpg)
+![alt text](images/RSNA_Breast_Cancer_Results_040423_inprogress.jpg)
 
 
 ## Create docker image and container and execute training and prediction commands
