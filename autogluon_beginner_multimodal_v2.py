@@ -40,6 +40,7 @@ import shutil
 import sys
 import argparse
 import torch
+import datetime
 from sklearn.model_selection import train_test_split
 # from sklearn.metrics import accuracy_score
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, roc_auc_score
@@ -209,7 +210,8 @@ def create_pngs_from_dicoms(uselock, dataset_folder, png_size=512, extension=".p
     return
 
 def runSessions(predict=False, train=False, createpng=False, uselock=False,
-                create_test_from_train=False, dataset_folder='./', png_size=512,
+                create_test_from_train=False, trainpercent_totest = 0.1,
+                dataset_folder='./', png_size=512,
                 extension=".png", debug_small_train=False, use_model_to_predict=None,
                 use_train_to_test=False, croptype=0):
     warnings.filterwarnings('ignore')
@@ -223,7 +225,7 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     """load the CSV files."""
     train_data = pd.read_csv(dataset_folder.get_train_csv, index_col=0)
     if debug_small_train:
-        train_data=train_data.iloc[:2000,:] # for debug
+        train_data=train_data.iloc[:1000,:] # for debug
     print(train_data.head())
 
     # Add path for pngs in new DF column
@@ -239,7 +241,7 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     if create_test_from_train:
         np.random.seed(123)
         # Split the train data into a training set and a test set
-        train_data, test_data = train_test_split(train_data, test_size=0.1, random_state=42)
+        train_data, test_data = train_test_split(train_data, test_size=trainpercent_totest, random_state=42)
     elif use_train_to_test:
         test_data = train_data.copy()
     else:
@@ -295,18 +297,38 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
         print("test_data example_row 0:")
         print(example_row)
 
-        if use_model_to_predict is None:
+        # if use_model_to_predict is None:
+        #     print("No model specified. Please specify a model to use for prediction")
+        #     return
+        # elif create_test_from_train:
+        #     print("Model path is", predictor.path)
+        #     predictor = MultiModalPredictor.load(predictor.path)
+        # elif os.path.exists(use_model_to_predict):
+        #     predictor = MultiModalPredictor.load(use_model_to_predict)
+        # else:
+        #     print("Model not found. Please specify a valid model to use for prediction")
+
+        # Note that use_model_to_predict and train are mutually exclusive
+        # if use_model_to_predict is given, check its path exists and set predictor to that
+        # else if train is true, set predictor to predictor.path
+        # else if none of the above, print error and return
+
+        if use_model_to_predict is not None:
+            if os.path.exists(use_model_to_predict):
+                predictor = MultiModalPredictor.load(use_model_to_predict)
+            else:
+                print("Model not found. Please specify a valid model to use for prediction")
+                return
+        elif train:   # Not needed as predictor is already set to predictor.path
+            print("Model path is", predictor.path)
+        else:
             print("No model specified. Please specify a model to use for prediction")
             return
-        elif create_test_from_train:
-            print("Model path is", predictor.path)
-            predictor = MultiModalPredictor.load(predictor.path)
-        elif os.path.exists(use_model_to_predict):
-            predictor = MultiModalPredictor.load(use_model_to_predict)
-        else:
-            print("Model not found. Please specify a valid model to use for prediction")
     else:
         return
+
+    # get unique id for filename based on time
+    filenameuid =  datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
     predictions = predictor.predict(test_data.drop(columns=label_col))
     print(predictions[:5])
@@ -321,7 +343,11 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
         'predictions': predictions
     })
     predictions.set_index('prediction_id', inplace=True)
-    predictions.to_csv("predictions.csv")
+    # predictions.to_csv("predictions.csv")
+    # Save predictions to csv file of name predictions_<filenameuid>.csv
+    predictions_file = "output/runpredictions/predictions_" + filenameuid + ".csv"
+    print("predictions_file:", predictions_file)
+    predictions.to_csv(predictions_file)
 
     """For classification tasks, we can get the probabilities of all classes."""
 
@@ -331,7 +357,10 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     probas['laterality'] = test_data['laterality']
     probas['cancer'] = test_data_save['cancer']
     probas = probas.set_index('prediction_id')
-    probas.to_csv("probas.csv")
+    # probas.to_csv("probas.csv")
+    probas_file = "output/runpredictions/probas_" + filenameuid + ".csv"
+    print("probas_file:", probas_file)
+    probas.to_csv(probas_file)
     probas = probas.iloc[:, 1:2]
     probas = probas.rename(columns={1: 'cancer'})
     print(probas.head())
@@ -369,9 +398,15 @@ if __name__ == '__main__':
     createpng = False
     uselock = False
     debug_small_train = False
-    use_model_to_predict = "/mnt/mdnvd04t/perswork/src/kg_rsna_bc/mysoln_1stattempt/AutogluonModels/ag-20230322_053322"
+    # use_model_to_predict = "./AutogluonModels/ag-20230322_053322"
+    use_model_to_predict = None
     use_train_to_test = False
     croptype = 0
+    # Add a new parameter to the parser called trainpercent_totest
+    # This parameter will be used to specify the percentage of the training data to be used for testing
+    # The default value is 0.1
+    trainpercent_totest = 0.1
+
     # ## DEFAULT END ##
 
     # ## DEBUG START ##
@@ -382,25 +417,16 @@ if __name__ == '__main__':
     # create_test_from_train = False
     # createpng = False
     # uselock = False
-    # debug_small_train = False
-    # use_model_to_predict = "/mnt/mdnvd04t/perswork/src/kg_rsna_bc/mysoln_1stattempt/AutogluonModels/ag-20230322_053322"
+    # debug_small_train = True
+    # use_model_to_predict = None
     # use_train_to_test = True
     # croptype = 3
     # ## DEBUG END ##
 
-    # if len(sys.argv) > 1:
-    #     predict = bool(int(sys.argv[1]))
-    # if len(sys.argv) > 2:
-    #     createpng = bool(int(sys.argv[2]))
-    # if len(sys.argv) > 3:
-    #     uselock = bool(int(sys.argv[3]))
-    # if len(sys.argv) > 4:
-    #     train = bool(int(sys.argv[4]))
-    # if len(sys.argv) > 5:
-    #     train = bool(int(sys.argv[4]))
-
     # Create an argument parser object
     parser = argparse.ArgumentParser(description="program for rsna mammography screening kaggle competition")
+
+    # check and disallow use of --use_model_to_predict and --train together
 
     # Add arguments to the parser
     # parser.add_argument("--dataset_dirname", type=str, default="./input/rsna-breast-cancer-detection/", help="Path to the dataset folder")
@@ -416,9 +442,35 @@ if __name__ == '__main__':
     parser.add_argument("--use_model_to_predict", type=str, default=use_model_to_predict, help="Path to the model to use for prediction")
     parser.add_argument("--use_train_to_test", action="store_true", default=use_train_to_test, help="Flag to use train.csv as test.csv")
     parser.add_argument("--croptype", type=int, default=croptype, help="Crop type to use, choose from 3 or 4")
+    parser.add_argument("--trainpercent_totest", type=float, default=trainpercent_totest, help="Percentage of training data to use for testing")
 
     # Parse the arguments
     args = parser.parse_args()
+
+    # check and disallow use of --use_model_to_predict and --train together
+    if args.use_model_to_predict is not None and args.train:
+        print("Error: --use_model_to_predict and --train cannot be used together")
+        exit(1)
+
+    # # check and disallow use of --use_model_to_predict and --train together
+    # if args.use_model_to_predict != "" and args.train:
+    #     print("Error: --use_model_to_predict and --train cannot be used together")
+    #     exit(1)
+
+    # # if use_train_to_test is True, then set train to False
+    # if args.use_train_to_test:
+    #     args.train = False
+    #     print("--use_train_to_test specified, setting --train to False")
+
+    # if train is True, then set use_model_to_predict to ""
+    if args.train:
+        args.use_model_to_predict = None
+        print("--train specified, setting --use_model_to_predict to ''")
+
+    # if use_model_to_predict is not empty, then set train to False
+    if args.use_model_to_predict is not None:
+        args.train = False
+        print("--use_model_to_predict specified, setting --train to False")
 
     # Access the variables using dot notation
     dataset_folder = DatasetDir(args.dataset_dirname)
@@ -433,6 +485,7 @@ if __name__ == '__main__':
     use_model_to_predict = args.use_model_to_predict
     use_train_to_test = args.use_train_to_test
     croptype = args.croptype
+    trainpercent_totest = args.trainpercent_totest
 
     # Print the variables for testing
     print(f"dataset_folder={dataset_folder.get_path}")
@@ -447,7 +500,8 @@ if __name__ == '__main__':
     print("use_model_to_predict=", use_model_to_predict)
     print("use_train_to_test=", use_train_to_test)
     print("croptype=", croptype)
+    print("trainpercent_totest=", trainpercent_totest) 
 
-    runSessions(predict, train, createpng, uselock, create_test_from_train,
+    runSessions(predict, train, createpng, uselock, create_test_from_train, trainpercent_totest,
                 dataset_folder, png_size, extension, debug_small_train,
                 use_model_to_predict, use_train_to_test, croptype)
