@@ -1,4 +1,4 @@
-# Kaggle Mammography Breast Cancer Detection 2023 Solution
+# Kaggle Mammography Breast Cancer Detection Competition 2023: Solution Attempts
 ## Code rules by Kaggle
 Solution attempts for RSNA Screening Mammography Breast Cancer Detection competition.  https://www.kaggle.com/competitions/rsna-breast-cancer-detection/overview
 
