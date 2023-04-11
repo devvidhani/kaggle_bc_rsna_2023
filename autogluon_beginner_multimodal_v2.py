@@ -44,6 +44,7 @@ import datetime
 from sklearn.model_selection import train_test_split
 # from sklearn.metrics import accuracy_score
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, roc_auc_score
+import yaml
 
 
 torch.set_float32_matmul_precision('high')
@@ -268,12 +269,15 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     """
     predictor = MultiModalPredictor(label=label_col)
     if train:
+        predictor_train_data = train_data.drop(columns=['patient_id', 'image_id'])
         predictor.fit(
             presets="best_quality",
-            train_data=train_data,
+            train_data=predictor_train_data,
             hyperparameters={"env.num_gpus": 1,
-                             "optimization.max_epochs": 20,
-                             "optimization.patience": 5,
+                             "optimization.max_epochs": 40,
+                             "optimization.patience": 10,
+                            #  "model.timm_image.num_epochs": 40,
+                            #  "model.timm_image.patience": 10,
                              "env.per_gpu_batch_size": 64 # for 256x256 images
                              # "env.per_gpu_batch_size": 8 # for 1024x1024 images,
                             },
@@ -283,9 +287,15 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     Given a multimodal dataframe without the label column, we can predict the labels.
     """
     if predict:
-        test_data_save = pd.DataFrame(data=test_data["cancer"])
+        # test_data_save = pd.DataFrame(data=test_data["cancer"])
+        test_data_del_later = pd.DataFrame(data=test_data[["patient_id", "laterality", "cancer"]])
+        test_data_save = pd.DataFrame(data=test_data[["patient_id", "laterality", "cancer"]])
+        duplicates = test_data_save[test_data_save.index.duplicated(keep=False)]
 
-        # change value of the dataframe column
+        # create new column with patient_id and laterality concatenated
+        test_data_save["prediction_id"] = test_data_save.apply(lambda x: f"{x['patient_id']}_{x['laterality']}", axis=1)
+
+        # change value of the dataframe column (forget any prediction values)
         test_data['cancer'] = 0
         # change datatype of dataframe column
         test_data['cancer'] = test_data['cancer'].astype('int')
@@ -330,7 +340,9 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     # get unique id for filename based on time
     filenameuid =  datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    predictions = predictor.predict(test_data.drop(columns=label_col))
+    # predictions = predictor.predict(test_data.drop(columns=label_col))
+    predictions_test_data = test_data.drop(columns=['patient_id', 'image_id', label_col])
+    predictions = predictor.predict(predictions_test_data)
     print(predictions[:5])
     accuracy_sc = accuracy_score(test_data_save['cancer'], predictions)
     print("prediction accuracy_score:", accuracy_sc)
@@ -351,7 +363,9 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
 
     """For classification tasks, we can get the probabilities of all classes."""
 
-    probas = predictor.predict_proba(test_data.drop(columns=label_col))
+    # probas = predictor.predict_proba(test_data.drop(columns=label_col))
+    # probas = predictor.predict_proba(test_data.drop(columns=['patient_id', 'image_id', label_col]))
+    probas = predictor.predict_proba(predictions_test_data)
     probas["prediction_id"] = test_data['patient_id'].astype(str) + "_" + test_data['laterality']
     probas['patient_id'] = test_data['patient_id']
     probas['laterality'] = test_data['laterality']
@@ -361,14 +375,109 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     probas_file = "output/runpredictions/probas_" + filenameuid + ".csv"
     print("probas_file:", probas_file)
     probas.to_csv(probas_file)
-    probas = probas.iloc[:, 1:2]
-    probas = probas.rename(columns={1: 'cancer'})
-    print(probas.head())
-    print("probabilistic_f1_scorer:", probabilistic_f1_scorer(test_data_save[label_col], probas['cancer']))
+    # probas = probas.iloc[:, 1:2]
+    probas_f1 = probas.iloc[:, 1:2]
+    probas_f1 = probas_f1.rename(columns={1: 'cancer'})
+    print(probas_f1.head())
+    print("probabilistic_f1_scorer:", probabilistic_f1_scorer(test_data_save[label_col], probas_f1['cancer']))
+
+    # Rename the 'cancer' column in the predictions DataFrame
+    predictions = predictions.rename(columns={'cancer': 'cancer_pred'})
+
+    # Rename the 'cancer' column in the probas DataFrame
+    probas = probas.rename(columns={'cancer': 'cancer_prob'})
+
+    # Concatenate the modified predictions and probas DataFrames
+    # predictions_probas = pd.concat([predictions, probas], axis=1)
+
+    # Combine predictions and probas into one dataframe and renaming duplicate columns
+    predictions_probas = pd.concat([predictions, probas], axis=1)
+    predictions_probas = predictions_probas.rename(columns={'cancer_x': 'cancer', 'cancer_y': 'cancer_proba'})
+    # predictions_probas = pd.concat([predictions, probas], axis=1)
+    # drop columns 'laterality' and 'patient_id' from predictions_probas
+    predictions_probas = predictions_probas.drop(columns=['laterality', 'patient_id'])
+    predictions_probas_file = "output/runpredictions/predictions_probas_" + filenameuid + ".csv"
+    print("predictions_probas_file:", predictions_probas_file)
+    # Write predictions_probas to csv file
+    predictions_probas.to_csv(predictions_probas_file)
+
+    # rename the last column to "cancer_prob"
+    # predictions_probas = predictions_probas.rename(columns={"cancer": "cancer_pred"})
+    # predictions_probas = predictions_probas.rename(columns={"cancer.1": "cancer_prob"})
+
+    # add new columns 
+    predictions_probas['mean_cancer_prob'] = predictions_probas.groupby('prediction_id')['cancer_prob'].transform('mean')
+    predictions_probas['count'] = predictions_probas.groupby('prediction_id')['cancer_prob'].transform('count')
+    predictions_probas['max_cancer_prob'] = predictions_probas.groupby('prediction_id')['cancer_prob'].transform('max')
+
+    # get prediction_ids where even one row has the 2nd and 3rd columns with different values
+    pred_ids = predictions_probas[predictions_probas.iloc[:, 1] != predictions_probas.iloc[:, 2]]["prediction_id"].unique()
+
+    # create temporary dataframe for rows with matching pred_ids
+    temp_df = predictions_probas[predictions_probas['prediction_id'].isin(pred_ids)]
+
+    # print the temporary dataframe
+    temp_df_file = "output/runpredictions/temp_df_" + filenameuid + ".csv"
+    print("temp_df_file:", temp_df_file)
+    temp_df.to_csv(temp_df_file)
+    # print(temp_df)
+
+    # update cancer_prob to max_cancer_prob if max_cancer_prob is greater than 0.6
+    predictions_probas.loc[['max_cancer_prob'] > 0.9, 'cancer_prob'] = predictions_probas['max_cancer_prob']
+
+    # recalculate mean_cancer_prob after updating cancer_prob
+    predictions_probas['mean_cancer_prob'] = predictions_probas.groupby('prediction_id')['cancer_prob'].transform('mean')
+
+    #print updated predictions_probas
+    predict_probas_file_updated = "output/runpredictions/predictions_probas_updated_" + filenameuid + ".csv"
+    print("predict_probas_file_updated:", predict_probas_file_updated)
+    predictions_probas.to_csv(predict_probas_file_updated)
+    # print(predictions_probas)
+
+    # drop all columns except prediction_id and mean_cancer_prob
+    sub_df = predictions_probas[['prediction_id', 'mean_cancer_prob']].copy()
+
+    # rename mean_cancer_prob to cancer
+    sub_df = sub_df.rename(columns={'mean_cancer_prob': 'cancer'})
+
+    # drop duplicate rows
+    sub_df = sub_df.drop_duplicates()
+
+    # check for duplicates in prediction_id column
+    if sub_df['prediction_id'].duplicated().any():
+        print("Warning: There are duplicate prediction_id values in sub_df!")
+
+    # print sub_df to csv file
+    sub_df_filename = "output/runpredictions/submission_" + filenameuid + ".csv"
+    print("sub_df_filename:", sub_df_filename)
+    sub_df.to_csv(sub_df_filename)
+    # sub_df.to_csv('submission.csv', index=False)
+
+    # calculate and print new probabilistic_f1_score for sub_df against test_data_save
+    # drop duplicate ruows on prediction_id
+    test_data_save.drop_duplicates(subset=["prediction_id"], inplace=True)
+
+    # set prediction_id as index
+    test_data_save.set_index("prediction_id", inplace=True)
+
+    # check for duplicates based on patient_id and laterality
+    duplicates = test_data_save[test_data_save.index.duplicated(keep=False)]
+
+    if len(duplicates) > 0:
+        print("Duplicate values found for the same patient and laterality:")
+        print(duplicates)
+    else:
+        print("No duplicate values found.")
+
+    sub_df = sub_df.rename(columns={"cancer": "cancer_pred"})
+    test_data_save = test_data_save.rename(columns={"cancer": "cancer_diagnosis"})
+    result_df = sub_df.join(test_data_save, on="prediction_id")
+
+    print("probabilistic_f1_scorer:", probabilistic_f1_scorer(result_df['cancer_diagnosis'], result_df['cancer_pred']))
 
     metrics = [accuracy_score, f1_score, recall_score, precision_score, roc_auc_score]
     y_pred = predictor.predict(test_data.drop(columns=label_col))
-    y_true = test_data_save[label_col]
+    y_true = test_data_del_later[label_col]
 
     if len(set(y_true)) > 1:  # check if more than one class is present in y_true
         metrics.remove(roc_auc_score)  # remove ROC AUC metric if only one class is present
@@ -406,6 +515,9 @@ if __name__ == '__main__':
     # This parameter will be used to specify the percentage of the training data to be used for testing
     # The default value is 0.1
     trainpercent_totest = 0.1
+    # Add a new parameter to read config.yaml file by default, unless the yaml file path is defined
+    yaml_file = None
+
 
     # ## DEFAULT END ##
 
@@ -430,6 +542,8 @@ if __name__ == '__main__':
 
     # Add arguments to the parser
     # parser.add_argument("--dataset_dirname", type=str, default="./input/rsna-breast-cancer-detection/", help="Path to the dataset folder")
+    # add_argument for optional parameter yaml_file code below
+    parser.add_argument("--yaml_file", type=str, default=yaml_file, help="Path to the optional config yaml file")
     parser.add_argument("--dataset_dirname", type=str, default=dataset_dirname, help="Path to the dataset folder")
     parser.add_argument("--png_size", type=int, default=png_size, help="Size of PNG images")
     parser.add_argument("--extension", type=str, default=extension, help="Extension of image files")
@@ -447,7 +561,6 @@ if __name__ == '__main__':
     # Parse the arguments
     args = parser.parse_args()
 
-    # check and disallow use of --use_model_to_predict and --train together
     if args.use_model_to_predict is not None and args.train:
         print("Error: --use_model_to_predict and --train cannot be used together")
         exit(1)
@@ -472,6 +585,7 @@ if __name__ == '__main__':
         args.train = False
         print("--use_model_to_predict specified, setting --train to False")
 
+
     # Access the variables using dot notation
     dataset_folder = DatasetDir(args.dataset_dirname)
     png_size = args.png_size
@@ -486,8 +600,50 @@ if __name__ == '__main__':
     use_train_to_test = args.use_train_to_test
     croptype = args.croptype
     trainpercent_totest = args.trainpercent_totest
+    yaml_file = args.yaml_file
+
+    # Add code to read config file yaml for arguments if it exists
+    # Code below
+    if os.path.exists(yaml_file):
+        with open(yaml_file, 'r') as stream:
+            try:
+                config = yaml.safe_load(stream)
+                # print(config)
+                # print(config['png_size'])
+                png_size = int(config.get('png_size', png_size))
+                extension = config.get('extension', extension)
+                predict = bool(config.get('predict', predict))
+                train = bool(config.get('train', train))
+                create_test_from_train = bool(config.get('create_test_from_train', create_test_from_train))
+                createpng = bool(config.get('createpng', createpng))
+                uselock = bool(config.get('uselock', uselock))
+                debug_small_train = bool(config.get('debug_small_train', debug_small_train))
+                use_model_to_predict = config.get('use_model_to_predict', use_model_to_predict)
+                use_train_to_test = bool(config.get('use_train_to_test', use_train_to_test))
+                croptype = int(config.get('croptype', croptype))
+                trainpercent_totest = float(config.get('trainpercent_totest', trainpercent_totest))
+            except yaml.YAMLError as exc:
+                print(exc)
+
+    # check and disallow use of use_model_to_predict and train together
+    # code below
+    if use_model_to_predict is not None and train:
+        print("Error: use_model_to_predict and train settings cannot be used together")
+        exit(1)
+
+    # if train is True, then set use_model_to_predict to ""
+    if train:
+        use_model_to_predict = None
+        print("train specified, setting use_model_to_predict to ''")
+
+    # if use_model_to_predict is not empty, then set train to False
+    if use_model_to_predict is not None:
+        train = False
+        print("use_model_to_predict specified, setting train to False")
 
     # Print the variables for testing
+    print("Arguments:")
+    print("yaml_file=", yaml_file)
     print(f"dataset_folder={dataset_folder.get_path}")
     print(f"png_size={png_size}")
     print(f"extension={extension}")
