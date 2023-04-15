@@ -1,0 +1,78 @@
+# This file specifies the model architectures and hyperparameters for different modalities and fusion methods.
+
+model:
+  names:
+  - fusion_transformer
+  - hf_text
+  - numerical_mlp
+  - timm_image
+  document_transformer:
+    checkpoint_name: microsoft/layoutlmv3-large
+  numerical_mlp:
+    hidden_size: 128
+    activation: leaky_relu
+    num_layers: 1
+    drop_rate: 0.1
+    normalization: layer_norm
+    d_token: 8
+    embedding_arch: null
+    data_types:
+    - numerical
+    merge: concat
+  hf_text:
+    checkpoint_name: local://hf_text
+    gradient_checkpointing: false
+    pooling_mode: cls
+    data_types:
+    - text
+    tokenizer_name: hf_auto
+    max_text_len: 512
+    insert_sep: true
+    low_cpu_mem_usage: false
+    text_segment_num: 2
+    stochastic_chunk: false
+    text_aug_detect_length: 10
+    text_trivial_aug_maxscale: 0.0
+    text_train_augment_types: null
+  # The timm_image modality uses a pretrained model from timm library
+  timm_image:
+    checkpoint_name: swin_large_patch4_window7_224 # The name of the pretrained model
+    mix_choice: all_logits # The choice of how to mix the logits from different backbones
+    data_types: # The list of data types that this modality can handle
+      - image
+    train_transform_types: # The list of image transformations to apply during training
+      - horizontal_flip
+      - vertical_flip
+  #     - resize_shorter_side # Resize the shorter side of the image to a given size
+  #     - center_crop # Crop the center region of the image
+  #     - trivial_augment # Apply random color jittering and horizontal flipping
+  #   val_transform_types: # The list of image transformations to apply during validation
+  #     - resize_shorter_side # Resize the shorter side of the image to a given size
+  #     - center_crop # Crop the center region of the image
+  #   image_norm: imagenet # The normalization method for the image pixels
+    image_size: null # The size of the input image, if None, use the default size of the pretrained model
+    max_img_num_per_col: 2 # The maximum number of images to concatenate per column
+  # The fusion_mlp fusion method uses a multilayer perceptron to fuse the features from different modalities
+  # fusion_mlp:
+  #   weight: 0.1 # The weight of this fusion method in the final prediction
+  #   adapt_in_features: max # The choice of how to adapt the input features from different modalities to have the same dimensionality
+  #   hidden_sizes: # The list of hidden layer sizes for the MLP
+  #     - 128
+  #   activation: leaky_relu # The activation function for the MLP
+  #   drop_rate: 0.1 # The dropout rate for the MLP
+  #   normalization: layer_norm # The normalization method for the MLP
+  #   data_types: null # The list of data types that this fusion method can handle, if None, use all available types
+  fusion_transformer:
+    n_blocks: 4
+    weight: 0.1 # The weight of this fusion method in the final prediction
+    hidden_size: 256,
+    attention_n_heads: 8,
+    num_layers: 2,
+    ffn_d_hidden: 512,
+    attention_dropout: 0.1,
+    residual_dropout: 0.1,
+    ffn_dropout: 0.1,
+    normalization: layer_norm,
+    ffn_activation: gelu,
+    head_activation: linear,
+    adapt_in_features: true

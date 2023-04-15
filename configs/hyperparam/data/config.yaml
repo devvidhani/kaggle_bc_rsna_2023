@@ -1,0 +1,33 @@
+# This file specifies the data preprocessing and augmentation options for different modalities and problem types.
+
+data:
+  image: # The options for image data
+    missing_value_strategy: zero # How to handle missing values in image columns, zero means filling with zeros
+    augmentations:
+      - type: RandomResizedCrop
+        size: 224
+      - type: RandomHorizontalFlip
+      - type: ColorJitter
+        brightness: 0.4
+        contrast: 0.4
+        saturation: 0.4
+  text: # The options for text data
+    normalize_text: false # Whether to normalize text by lowercasing and removing punctuation
+  categorical: # The options for categorical data
+    minimum_cat_count: 100 # The minimum count threshold for a category value to be considered valid, otherwise it will be treated as missing value
+    maximum_num_cat: 20 # The maximum number of category values to keep, otherwise they will be treated as missing value
+    convert_to_text: true # Whether to convert categorical values to text tokens
+  numerical: # The options for numerical data
+    convert_to_text: false # Whether to convert numerical values to text tokens
+    scaler_with_mean: true # Whether to use mean when scaling numerical values
+    scaler_with_std: true # Whether to use standard deviation when scaling numerical values
+  document: # The options for document data (such as PDF files)
+    missing_value_strategy: zero # How to handle missing values in document columns, zero means filling with zeros
+  label: # The options for label data (the target variable)
+    numerical_label_preprocessing: standardscaler # How to preprocess numerical labels, standardscaler means scaling them with mean and standard deviation
+  pos_label: null # The positive label value for binary classification problems, if None, use the second value in classes list
+  mixup: # The options for mixup augmentation, which mixes two samples with different labels and interpolates their features and labels
+    turn_on: false # Whether to enable mixup augmentation or not
+    mixup_alpha: 0.8 # The alpha parameter for mixup augmentation, which controls the degree of mixing
+    cutmix_alpha: 1.0 # The alpha parameter for cutmix augmentation, which is a variant of mixup that only mixes a region of the images
+    cutmix_minmax: null # The minimum and maximum size ratio of the cutmix region, if None, use default values based on cutmix_alpha

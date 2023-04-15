@@ -1,0 +1,12 @@
+png_size: 256
+extension: .png
+predict: true
+train: false
+create_test_from_train: false
+createpng: false
+uselock: false
+debug_small_train: false
+use_model_to_predict: ./AutogluonModels/ag-20230404_072529
+use_train_to_test: true
+croptype: 3
+trainpercent_totest: 0.1

@@ -45,9 +45,135 @@ from sklearn.model_selection import train_test_split
 # from sklearn.metrics import accuracy_score
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, roc_auc_score
 import yaml
+from autogluon.multimodal.constants import (
+    DATA,
+    ENVIRONMENT,
+    MODEL,
+    OPTIMIZATION,
+)
+
 
 
 torch.set_float32_matmul_precision('high')
+
+def get_model_configs():
+    model_config = {
+        "model": {
+            "names": [
+                "fusion_transformer",
+                "hf_text",
+                "numerical_mlp",
+                "timm_image"
+            ],
+            # "document_transformer": {
+            #     "checkpoint_name": "microsoft/layoutlmv3-large"
+            # },
+            "numerical_mlp": {
+                "hidden_size": 128,
+                "activation": "leaky_relu",
+                "num_layers": 1,
+                "drop_rate": 0.1,
+                "normalization": "layer_norm",
+                "d_token": 8,
+                "embedding_arch": None,
+                "data_types": ["numerical"],
+                "merge": "concat"
+            },
+            "hf_text": {
+                "checkpoint_name": "local://hf_text",
+                "gradient_checkpointing": False,
+                "pooling_mode": "cls",
+                "data_types": ["text"],
+                "tokenizer_name": "hf_auto",
+                "max_text_len": 512,
+                "insert_sep": True,
+                "low_cpu_mem_usage": False,
+                "text_segment_num": 2,
+                "stochastic_chunk": False,
+                "text_aug_detect_length": 10,
+                "text_trivial_aug_maxscale": 0.0,
+                "text_train_augment_types": None
+            },
+            "timm_image": {
+                "checkpoint_name": "swin_large_patch4_window7_224",
+                "mix_choice": "all_logits backbones",
+                "data_types": ["image"],
+                "train_transform_types": [
+                    "horizontal_flip",
+                    "vertical_flip"
+                ],
+                "image_size": None,
+                "max_img_num_per_col": 2
+            },
+            "fusion_transformer": {
+                "n_blocks": 4,
+                "weight": 0.1,
+                "hidden_size": 256,
+                "attention_n_heads": 8,
+                "num_layers": 2,
+                "ffn_d_hidden": 512,
+                "attention_dropout": 0.1,
+                "residual_dropout": 0.1,
+                "ffn_dropout": 0.1,
+                "normalization": "layer_norm",
+                "ffn_activation": "gelu",
+                "head_activation": "linear",
+                "adapt_in_features": True
+            }
+        }
+    }
+    return model_config
+
+def get_data_configs():
+    data_config = {
+        "data": {
+            'image': {
+                'missing_value_strategy': 'zero',
+                'augmentations': [
+                    {
+                        'type': 'RandomResizedCrop',
+                        'size': 224
+                    },
+                    {
+                        'type': 'RandomHorizontalFlip'
+                    },
+                    {
+                        'type': 'ColorJitter',
+                        'brightness': 0.4,
+                        'contrast': 0.4,
+                        'saturation': 0.4
+                    }
+                ]
+            },
+            'text': {
+                'normalize_text': False
+            },
+            'categorical': {
+                'minimum_cat_count': 100,
+                'maximum_num_cat': 20,
+                'convert_to_text': True
+            },
+            'numerical': {
+                'convert_to_text': False,
+                'scaler_with_mean': True,
+                'scaler_with_std': True
+            },
+            'document': {
+                'missing_value_strategy': 'zero'
+            },
+            'label': {
+                'numerical_label_preprocessing': 'standardscaler'
+            },
+            'pos_label': None,
+            'mixup': {
+                'turn_on': False,
+                'mixup_alpha': 0.8,
+                'cutmix_alpha': 1.0,
+                'cutmix_minmax': None
+            }
+        }
+    }
+    return data_config
 
 #Create a class for directory that has getter methods for its 2 subdirectories and 2 files called train_images, test_images, train.csv, test.csv
 class DatasetDir:
@@ -270,17 +396,39 @@ def runSessions(predict=False, train=False, createpng=False, uselock=False,
     predictor = MultiModalPredictor(label=label_col)
     if train:
         predictor_train_data = train_data.drop(columns=['patient_id', 'image_id'])
+        predictor.set_verbosity(4)
+
+        # create a list of transforms
+        # image_transform = [rotate(), color(), contrast()]
+
+        # predictorconfig = {
+        #     "model": "./configs/hyperparam/model/config.yaml",
+        #     "data": "./configs/hyperparam/data/config.yaml",
+        #     # "optimization": "./configs/hyperparam/optimization/config.yaml",
+        #     # "environment": "./configs/hyperparam/environment/config.yaml",
+        #     }
+        predictorconfig = {
+            MODEL: get_model_configs(),
+            DATA: get_data_configs(),
+            # OPTIMIZATION: "adamw",
+            # ENVIRONMENT: "default",
+        }
+
+        hyperparameters={"env.num_gpus": 1,
+                            "optimization.max_epochs": 50,
+                            "optimization.patience": 30,
+                            "env.per_gpu_batch_size": 64, # for 256x256 images
+                            "model.timm_image.image_size": 1024,
+                        #  "model.timm_image.num_epochs": 40,
+                        #  "model.timm_image.patience": 10,
+                            # "env.per_gpu_batch_size": 8 # for 1024x1024 images,
+                        },
+
         predictor.fit(
             presets="best_quality",
             train_data=predictor_train_data,
-            hyperparameters={"env.num_gpus": 1,
-                             "optimization.max_epochs": 40,
-                             "optimization.patience": 10,
-                            #  "model.timm_image.num_epochs": 40,
-                            #  "model.timm_image.patience": 10,
-                             "env.per_gpu_batch_size": 64 # for 256x256 images
-                             # "env.per_gpu_batch_size": 8 # for 1024x1024 images,
-                            },
+            # config=predictorconfig,
+            hyperparameters=hyperparameters
         )
 
     """## PREDICTION

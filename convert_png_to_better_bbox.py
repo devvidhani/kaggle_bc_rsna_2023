@@ -10,6 +10,42 @@ import matplotlib.pyplot as plt
 import shutil
 
 
+def adjust_bounding_box(image, x, y, w, h):
+    max_side = max(w, h)
+    if w < max_side:
+        # try to expand width in equal amounts on both sides
+        delta = max_side - w
+        left_delta = delta // 2
+        right_delta = delta - left_delta
+        if x - left_delta < 0:
+            # extend more on right side
+            right_delta = right_delta + left_delta - x
+            left_delta = x
+        elif x + w + right_delta > image.shape[1]:
+            # extend more on left side
+            left_delta = left_delta + right_delta - (image.shape[1] - (x + w))
+            right_delta = image.shape[1] - (x + w)
+        x = x - left_delta
+        w = w + delta
+    if h < max_side:
+        # expand height
+        delta = max_side - h
+        top_delta = delta // 2
+        bottom_delta = delta - top_delta
+        if y - top_delta < 0:
+            # extend more on bottom side
+            bottom_delta = bottom_delta + top_delta - y
+            top_delta = y
+        elif y + h + bottom_delta > image.shape[0]:
+            # extend more on top side
+            top_delta = top_delta + bottom_delta - (image.shape[0] - (y + h))
+            bottom_delta = image.shape[0] - (y + h)
+        y = y - top_delta
+        h = h + delta
+    return x, y, w, h
+
+
+
 # threadsafe function to create a directory
 def create_folder(lock, foldername, nocheck=False):
     with lock:
@@ -144,6 +180,10 @@ def find_effective_region(image_path, size):
 
     # Crop the image to include only the breast tissue
     x, y, w, h = cv2.boundingRect(breast_contour)
+
+    # Adjust the bounding box to a square
+    x, y, w, h = adjust_bounding_box(image, x, y, w, h)
+
     cropped_image = image[y:y+h, x:x+w]
     return cropped_image
 

@@ -39,12 +39,18 @@ docker exec -it kg_rsna_bc_gpu0_name /bin/bash
 docker exec -it kg_rsna_bc_gpu1_name /bin/bash
 ```
 
-4. Create PNG Files of a Certain Size
+4. Main script: ./autogluon_beginner_multimodal_v2.py
+This is the main script to execute to get the results.
+
+4. Parameters to control main script execution
+The main script (./autogluon_beginner_multimodal_v2.py) parameters can be passed through either command line or through the configuration file. The configuration files are stored in configs directory. Below are the parameters of the main program:-
+
+5. Create PNG Files of a Certain Size
 ```
 time python ./autogluon_beginner_multimodal_v2.py --createpng --uselock --png_size 768 --croptype 0
 ```
 
-5. Train and Predict on Original PNGs
+6. Train and Predict on Original PNGs
 ```
 Command for 256x256 resolution png files
 nohup time python ./autogluon_beginner_multimodal_v2.py --png_size 256 --train --predict --croptype 0 --use_train_to_test > ./output/runlog/kaggle_bc_rsna_autoguon_256_20230403_1305.txt 2>&1 &
@@ -59,12 +65,12 @@ Command for 1024x1024 resolution png files
 nohup time python ./autogluon_beginner_multimodal_v2.py --png_size 1024 --train --predict --croptype 0 --use_train_to_test > ./output/runlog/kaggle_bc_rsna_autoguon_1024_20230403_1305.txt 2>&1 &
 ```
 
-6. Create Focused Region Cropped PNG Files
+7. Create Focused Region Cropped PNG Files
 ```
 time python ./convert_png_to_better_bbox.py
 ```
 
-7. Train and Predict on Cropped PNGs
+8. Train and Predict on Cropped PNGs
 ```
 nohup time python ./autogluon_beginner_multimodal_v2.py --png_size 256 --train --predict --croptype 3 --use_train_to_test > ./output/runlog/kaggle_bc_rsna_autoguon_256_20230403_1305.txt 2>&1 &
 nohup time python ./autogluon_beginner_multimodal_v2.py --png_size 512 --train --predict --croptype 3 --use_train_to_test > ./output/runlog/kaggle_bc_rsna_autoguon_512.txt 2>&1 &

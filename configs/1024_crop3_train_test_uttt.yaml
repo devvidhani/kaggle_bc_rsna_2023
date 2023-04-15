@@ -1,0 +1,11 @@
+png_size: 1024
+extension: .png
+predict: true
+train: true
+create_test_from_train: false
+createpng: false
+uselock: false
+debug_small_train: false
+use_train_to_test: true
+croptype: 3
+trainpercent_totest: 0.1
